@@ -11,7 +11,7 @@ set -e
 PLAN_FILE="${1:-/tmp/plan.json}"
 ERRORS=0
 POINTS=0
-MAX_POINTS=40  # Total points from lab-specific validation (out of 100 total)
+MAX_POINTS=50  # Total points from lab-specific validation (out of 100 total)
 
 echo "================================================"
 echo "Lab 01 Validation - EC2 with IMDSv2"

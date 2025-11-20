@@ -232,20 +232,37 @@ jobs:
         continue-on-error: true
         run: |
           VALIDATOR_SCRIPT="${{ steps.lab-info.outputs.lab_dir }}/.validator/validate.sh"
-          
+
           if [ -f "$VALIDATOR_SCRIPT" ]; then
             echo "📋 Running lab-specific validator..."
             chmod +x "$VALIDATOR_SCRIPT"
-            
+
             cd "${{ steps.lab-info.outputs.work_dir }}"
-            if bash "../.validator/validate.sh" /tmp/plan.json; then
+
+            # Run validator and capture output
+            VALIDATOR_OUTPUT=$(bash "../.validator/validate.sh" /tmp/plan.json 2>&1)
+            VALIDATOR_EXIT=$?
+
+            # Display validator output
+            echo "$VALIDATOR_OUTPUT"
+
+            # Parse points from validator output (format: "Points earned: X/Y")
+            EARNED_POINTS=$(echo "$VALIDATOR_OUTPUT" | grep -oP 'Points earned: \K\d+(?=/\d+)' || echo "0")
+            MAX_VALIDATOR_POINTS=$(echo "$VALIDATOR_OUTPUT" | grep -oP 'Points earned: \d+/\K\d+' || echo "50")
+
+            # Scale points from validator scale (0-50) to workflow scale (0-20)
+            SCALED_POINTS=$((EARNED_POINTS * 20 / MAX_VALIDATOR_POINTS))
+
+            echo "📊 Validator score: $EARNED_POINTS/$MAX_VALIDATOR_POINTS (scaled to $SCALED_POINTS/20)"
+
+            if [ $VALIDATOR_EXIT -eq 0 ]; then
               echo "status=pass" >> $GITHUB_OUTPUT
-              echo "points=20" >> $GITHUB_OUTPUT
+              echo "points=$SCALED_POINTS" >> $GITHUB_OUTPUT
               echo "✅ Lab-specific validation passed"
             else
               echo "status=fail" >> $GITHUB_OUTPUT
-              echo "points=0" >> $GITHUB_OUTPUT
-              echo "::error::Lab-specific validation failed"
+              echo "points=$SCALED_POINTS" >> $GITHUB_OUTPUT
+              echo "::warning::Lab-specific validation failed but awarded partial credit: $SCALED_POINTS/20 points"
             fi
           else
             echo "::warning::No lab-specific validator found at $VALIDATOR_SCRIPT"
@@ -329,9 +346,9 @@ jobs:
         run: |
           if [ -f /tmp/infracost.json ]; then
             MONTHLY_COST=$(jq -r '.totalMonthlyCost // 0' /tmp/infracost.json)
-            
+
             # Cost thresholds per lab (can be customized)
-            COST_LIMIT=5.00
+            COST_LIMIT=10.00
             
             echo "💰 Estimated monthly cost: \$$MONTHLY_COST"
             echo "💵 Budget limit: \$$COST_LIMIT"

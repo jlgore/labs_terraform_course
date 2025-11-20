@@ -67,20 +67,48 @@ Create `backend.tf` for remote state storage (using the state bucket from Lab 0)
 # Backend configuration for remote state storage
 terraform {
   backend "s3" {
-    bucket       = "terraform-state-YOUR-ACCOUNT-ID"  # Replace with your state bucket
-    key          = "week-00/lab-01/terraform.tfstate"
-    region       = "us-east-1"
-    encrypt      = true
-    use_lockfile = true
+    bucket         = "terraform-state-YOUR-ACCOUNT-ID"  # Replace with your actual account ID
+    key            = "week-00/lab-01/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    use_lockfile   = true  # Native S3 locking (Terraform 1.9+)
   }
 }
 ```
 
-**Remember:** Replace `YOUR-ACCOUNT-ID` with your AWS account ID.
+**Understanding the backend block:**
+- `bucket` - The S3 bucket you created in Lab 0
+- `key` - Path within the bucket (organizes state files by lab)
+- `region` - AWS region where the bucket exists
+- `encrypt` - Encrypts state at rest
+- `use_lockfile` - Uses S3's native locking to prevent concurrent modifications
 
-**Quick way to get it:**
+**💡 Quick way to get your bucket name:**
+
+If you followed Lab 0, you should already have a state bucket. To get the exact name:
+
 ```bash
-echo "terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+# If you still have the variable set from Lab 0:
+echo "terraform-state-$AWS_ACCOUNT_ID"
+
+# Or get it fresh:
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "terraform-state-$AWS_ACCOUNT_ID"
+```
+
+Copy the output and paste it as your `bucket` value in `backend.tf`.
+
+**Example `backend.tf` with real account ID:**
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "terraform-state-123456789012"
+    key            = "week-00/lab-01/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    use_lockfile   = true
+  }
+}
 ```
 
 ### Part 2: Create Terraform Configuration Skeleton (15 minutes)
