@@ -216,9 +216,18 @@ jobs:
         continue-on-error: true
         working-directory: ${{ steps.lab-info.outputs.work_dir }}
         run: |
-          terraform plan -out=tfplan -no-color 2>&1 | tee /tmp/plan.txt
+          # Get the runner's public IP for validation purposes
+          RUNNER_IP=$(curl -s https://ifconfig.me)
+          echo "🌐 Using runner IP for validation: $RUNNER_IP"
+
+          # Provide values for variables that students would normally set in terraform.tfvars
+          # These are only used for plan validation, not actual deployment
+          terraform plan -out=tfplan -no-color \
+            -var="student_name=${{ github.event.pull_request.user.login }}" \
+            -var="my_ip=${RUNNER_IP}/32" \
+            2>&1 | tee /tmp/plan.txt
           terraform show -json tfplan > /tmp/plan.json
-          
+
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=pass" >> $GITHUB_OUTPUT
             echo "✅ Terraform plan generated successfully"
