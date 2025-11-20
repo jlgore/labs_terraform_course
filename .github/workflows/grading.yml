@@ -115,7 +115,21 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-      
+
+      - name: Run lab-specific setup (if exists)
+        id: lab-setup
+        continue-on-error: true
+        run: |
+          SETUP_SCRIPT="${{ steps.lab-info.outputs.lab_dir }}/.validator/setup.sh"
+
+          if [ -f "$SETUP_SCRIPT" ]; then
+            echo "🔧 Running lab-specific setup..."
+            chmod +x "$SETUP_SCRIPT"
+            bash "$SETUP_SCRIPT"
+          else
+            echo "ℹ️  No lab-specific setup script found (optional)"
+          fi
+
       - name: Initialize Terraform
         working-directory: ${{ steps.lab-info.outputs.work_dir }}
         run: terraform init
