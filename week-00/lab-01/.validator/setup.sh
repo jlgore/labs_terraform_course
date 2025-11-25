@@ -10,9 +10,9 @@ echo "🔧 Setting up Lab 01 environment..."
 
 # Create SSH key pair for validation (mimics student's local setup)
 mkdir -p ~/.ssh
-if [ ! -f ~/.ssh/terraform-lab-01 ]; then
+if [ ! -f ~/.ssh/wordpress-lab ]; then
   echo "📝 Generating SSH key pair..."
-  ssh-keygen -t rsa -b 4096 -f ~/.ssh/terraform-lab-01 -N "" -q
+  ssh-keygen -t rsa -b 4096 -f ~/.ssh/wordpress-lab -N "" -q
   echo "✅ SSH key pair created"
 else
   echo "✅ SSH key pair already exists"
