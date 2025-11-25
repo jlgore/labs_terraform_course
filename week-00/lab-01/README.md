@@ -198,7 +198,7 @@ data "aws_ami" "amazon_linux_2023" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023*-kernel-*-x86_64"]
   }
 
   filter {
@@ -538,8 +538,8 @@ resource "aws_instance" "wordpress" {
 
   # Root volume configuration
   root_block_device {
-    volume_size = 20    # GB - enough for WordPress and database
-    volume_type = "gp2"
+    volume_size = 30    # GB - minimum required for AL2023 AMI
+    volume_type = "gp3"
     encrypted   = true
   }
 
@@ -813,7 +813,7 @@ infracost breakdown --path .
 
 **Cost breakdown:**
 - t3.micro instance: ~$7.59/month (730 hours × $0.0104/hour)
-- EBS storage (20 GB gp2): ~$2.00/month
+- EBS storage (30 GB gp3): ~$2.40/month
 - Data transfer: Minimal for this lab
 
 **Remember:** Resources tagged with `AutoTeardown = "8h"` will be automatically destroyed after 8 hours!

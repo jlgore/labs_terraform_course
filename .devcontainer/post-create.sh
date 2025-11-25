@@ -16,6 +16,10 @@ if ! mkdir -p ~/.terraform.d/plugin-cache 2>/dev/null; then
   sudo chown -R $(whoami):$(whoami) ~/.terraform.d
 fi
 
+# Install vim and neovim
+echo "📝 Installing vim and neovim..."
+sudo apt-get update -qq && sudo apt-get install -y -qq vim neovim
+
 # Install Infracost
 echo "📊 Installing Infracost..."
 curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
@@ -40,6 +44,8 @@ echo "  - Infracost: $(infracost --version)"
 echo "  - Checkov:   $(checkov --version 2>/dev/null | head -1)"
 echo "  - TFLint:    $(tflint --version | head -1)"
 echo "  - gh CLI:    $(gh --version | head -1)"
+echo "  - vim:       $(vim --version | head -1 | cut -d' ' -f5)"
+echo "  - neovim:    $(nvim --version | head -1)"
 echo ""
 echo "📚 Ready for Terraform labs!"
 echo ""
