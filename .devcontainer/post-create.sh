@@ -9,7 +9,12 @@ set -e
 echo "🚀 Setting up Terraform Course environment..."
 
 # Create Terraform plugin cache directory
-mkdir -p ~/.terraform.d/plugin-cache
+# Use sudo if needed (handles permission issues in some container setups)
+if ! mkdir -p ~/.terraform.d/plugin-cache 2>/dev/null; then
+  echo "⚠️  Creating terraform directory with sudo..."
+  sudo mkdir -p ~/.terraform.d/plugin-cache
+  sudo chown -R $(whoami):$(whoami) ~/.terraform.d
+fi
 
 # Install Infracost
 echo "📊 Installing Infracost..."
