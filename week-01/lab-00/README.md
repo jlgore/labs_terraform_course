@@ -35,17 +35,19 @@ In Week 00, you created an S3 bucket with versioning and encryption. What if you
 ```hcl
 # Instead of copying 50 lines of S3 configuration...
 module "logs_bucket" {
-  source      = "./modules/s3-bucket"
+  source      = "../../../modules/s3-bucket"  # Path to shared module
   bucket_name = "my-app-logs"
   environment = "prod"
 }
 
 module "assets_bucket" {
-  source      = "./modules/s3-bucket"
+  source      = "../../../modules/s3-bucket"
   bucket_name = "my-app-assets"
   environment = "prod"
 }
 ```
+
+> **In this course:** All modules live in the project root at `terraform-course/modules/`. From your lab's `student-work/` directory, you'll reference them with `../../../modules/module-name`.
 
 ---
 
@@ -209,13 +211,13 @@ output "bucket_domain_name" {
 
 ### Using a Module
 
-From your root module, call your child module:
+From your working directory, call your module:
 
 ```hcl
-# root main.tf
+# week-01/lab-00/student-work/main.tf
 
 module "my_bucket" {
-  source = "./modules/s3-bucket"  # Path to module directory
+  source = "../../../modules/s3-bucket"  # Path to project root modules
 
   # Required variables (no defaults)
   bucket_name = "my-app-data"
@@ -323,6 +325,476 @@ variable "flexible" {
 7. **Don't hardcode values** - Everything configurable should be a variable
 
 8. **Output useful values** - Think about what callers will need
+
+---
+
+## Step-by-Step Walkthrough: Building the S3 Module
+
+This section walks you through building the S3 bucket module from scratch, file by file, block by block.
+
+### Step 1: Set Up Your Project Structure
+
+**Important:** All modules in this course live in the **project root's `modules/` directory**, not inside each lab. This mirrors real-world projects where modules are shared across multiple configurations.
+
+```bash
+# From the terraform-course root directory
+cd /workspaces/terraform-course  # or wherever your project root is
+
+# Create the s3-bucket module directory (modules/ already exists)
+mkdir -p modules/s3-bucket
+
+# Verify the structure
+ls modules/
+```
+
+You should see:
+```
+modules/
+├── compute/      # (for future weeks)
+├── database/     # (for future weeks)
+├── s3-bucket/    # NEW - you'll build this!
+└── vpc/          # (for future weeks)
+```
+
+Now set up your lab working directory:
+
+```bash
+# Navigate to your student-work directory
+cd week-01/lab-00/student-work
+
+# Create the test directory
+mkdir -p tests
+
+# Verify your structure
+tree .
+```
+
+Your student-work directory should have:
+```
+student-work/
+├── main.tf           # (from starter - we'll update this)
+├── variables.tf      # (from starter)
+├── outputs.tf        # (from starter)
+├── providers.tf      # (from starter)
+└── tests/            # Empty - we'll add tests later
+```
+
+> **Why modules at the project root?** In real projects, modules are reusable across multiple environments and configurations. By placing modules at `terraform-course/modules/`, you can use the same `s3-bucket` module in Lab 00, Lab 01, and beyond without copying code. This is the DRY principle in action!
+
+---
+
+### Step 2: Create the Module Variables (`variables.tf`)
+
+Let's build the module's `variables.tf` step by step. We'll add one variable at a time.
+
+#### 2.1: Start with the required `bucket_name` variable
+
+Create the file at `terraform-course/modules/s3-bucket/variables.tf` and add:
+
+```hcl
+# modules/s3-bucket/variables.tf
+
+variable "bucket_name" {
+  description = "Base name for the S3 bucket"
+  type        = string
+}
+```
+
+This is the simplest valid variable - a required string with a description.
+
+#### 2.2: Add validation to `bucket_name`
+
+S3 bucket names must be 3-63 characters. Let's enforce that:
+
+```hcl
+# modules/s3-bucket/variables.tf
+
+variable "bucket_name" {
+  description = "Base name for the S3 bucket"
+  type        = string
+
+  validation {
+    condition     = length(var.bucket_name) >= 3 && length(var.bucket_name) <= 63
+    error_message = "Bucket name must be between 3 and 63 characters."
+  }
+}
+```
+
+> **Why validate?** Validation catches errors at `terraform plan` time, not when AWS rejects your request. Better to fail fast with a clear message!
+
+#### 2.3: Add the `environment` variable
+
+```hcl
+variable "environment" {
+  description = "Environment (dev, staging, prod)"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be dev, staging, or prod."
+  }
+}
+```
+
+#### 2.4: Add the optional `enable_versioning` variable
+
+This shows how to make a variable optional with a default value:
+
+```hcl
+variable "enable_versioning" {
+  description = "Enable versioning on the bucket"
+  type        = bool
+  default     = true  # Optional - has a default
+}
+```
+
+> **Required vs Optional:** If a variable has no `default`, it's required. If it has a `default`, it's optional.
+
+#### 2.5: Add the optional `tags` variable
+
+```hcl
+variable "tags" {
+  description = "Additional tags to apply to the bucket"
+  type        = map(string)
+  default     = {}  # Empty map - users can optionally add tags
+}
+```
+
+#### Complete `variables.tf`
+
+Your final `modules/s3-bucket/variables.tf` should look like this:
+
+```hcl
+# modules/s3-bucket/variables.tf
+# Input variables for the S3 bucket module
+
+variable "bucket_name" {
+  description = "Base name for the S3 bucket"
+  type        = string
+
+  validation {
+    condition     = length(var.bucket_name) >= 3 && length(var.bucket_name) <= 63
+    error_message = "Bucket name must be between 3 and 63 characters."
+  }
+}
+
+variable "environment" {
+  description = "Environment (dev, staging, prod)"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be dev, staging, or prod."
+  }
+}
+
+variable "enable_versioning" {
+  description = "Enable versioning on the bucket"
+  type        = bool
+  default     = true
+}
+
+variable "tags" {
+  description = "Additional tags to apply to the bucket"
+  type        = map(string)
+  default     = {}
+}
+```
+
+---
+
+### Step 3: Create the Module Resources (`main.tf`)
+
+Now let's build `modules/s3-bucket/main.tf`. This is where the actual AWS resources are defined.
+
+#### 3.1: Start with locals for tag management
+
+Before creating resources, set up a `locals` block to handle tag merging:
+
+```hcl
+# modules/s3-bucket/main.tf
+
+locals {
+  # Default tags that every bucket should have
+  default_tags = {
+    Name        = var.bucket_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Module      = "s3-bucket"
+  }
+
+  # Merge default tags with any user-provided tags
+  # User tags override defaults if there's a conflict
+  all_tags = merge(local.default_tags, var.tags)
+}
+```
+
+> **Why use locals?** We calculate `all_tags` once and use it everywhere. If we need to add more default tags later, we change one place, not every resource.
+
+#### 3.2: Add the S3 bucket resource
+
+```hcl
+# The main S3 bucket
+resource "aws_s3_bucket" "this" {
+  bucket = var.bucket_name
+  tags   = local.all_tags
+}
+```
+
+> **Why name it "this"?** When a module has only one resource of a type, `this` is a common convention. It keeps references short: `aws_s3_bucket.this` instead of `aws_s3_bucket.my_bucket`.
+
+#### 3.3: Add versioning configuration
+
+```hcl
+# Versioning configuration
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  versioning_configuration {
+    status = var.enable_versioning ? "Enabled" : "Suspended"
+  }
+}
+```
+
+Notice two things:
+1. `bucket = aws_s3_bucket.this.id` - References our bucket resource
+2. `var.enable_versioning ? "Enabled" : "Suspended"` - Ternary expression based on variable
+
+#### 3.4: Add server-side encryption
+
+```hcl
+# Server-side encryption (AES256)
+resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+```
+
+#### Complete `main.tf`
+
+Your final `modules/s3-bucket/main.tf`:
+
+```hcl
+# modules/s3-bucket/main.tf
+# S3 bucket with versioning and encryption
+
+locals {
+  default_tags = {
+    Name        = var.bucket_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Module      = "s3-bucket"
+  }
+
+  all_tags = merge(local.default_tags, var.tags)
+}
+
+# The main S3 bucket
+resource "aws_s3_bucket" "this" {
+  bucket = var.bucket_name
+  tags   = local.all_tags
+}
+
+# Versioning configuration
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  versioning_configuration {
+    status = var.enable_versioning ? "Enabled" : "Suspended"
+  }
+}
+
+# Server-side encryption (AES256)
+resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+```
+
+---
+
+### Step 4: Create the Module Outputs (`outputs.tf`)
+
+Outputs expose values from your module so the caller can use them.
+
+Create `modules/s3-bucket/outputs.tf`:
+
+#### 4.1: Output the bucket ID
+
+```hcl
+# modules/s3-bucket/outputs.tf
+
+output "bucket_id" {
+  description = "The name of the bucket"
+  value       = aws_s3_bucket.this.id
+}
+```
+
+#### 4.2: Output the bucket ARN
+
+```hcl
+output "bucket_arn" {
+  description = "The ARN of the bucket"
+  value       = aws_s3_bucket.this.arn
+}
+```
+
+> **What's an ARN?** Amazon Resource Name - a unique identifier for AWS resources. You'll need this for IAM policies and other AWS integrations.
+
+#### 4.3: Output the bucket region
+
+```hcl
+output "bucket_region" {
+  description = "The AWS region of the bucket"
+  value       = aws_s3_bucket.this.region
+}
+```
+
+#### Complete `outputs.tf`
+
+```hcl
+# modules/s3-bucket/outputs.tf
+# Values exposed by this module
+
+output "bucket_id" {
+  description = "The name of the bucket"
+  value       = aws_s3_bucket.this.id
+}
+
+output "bucket_arn" {
+  description = "The ARN of the bucket"
+  value       = aws_s3_bucket.this.arn
+}
+
+output "bucket_region" {
+  description = "The AWS region of the bucket"
+  value       = aws_s3_bucket.this.region
+}
+```
+
+---
+
+### Step 5: Use Your Module (Root `main.tf`)
+
+Now let's use the module you just created! Update your `student-work/main.tf`:
+
+```hcl
+# week-01/lab-00/student-work/main.tf
+# Root module - uses the S3 bucket module from project root
+
+module "lab_bucket" {
+  source = "../../../modules/s3-bucket"  # Path to shared module at project root
+
+  # Required variables
+  bucket_name = "${var.student_name}-week01-lab00"
+  environment = var.environment
+
+  # Optional variables (showing explicit values, could omit for defaults)
+  enable_versioning = true
+
+  # Additional tags
+  tags = {
+    Student      = var.student_name
+    AutoTeardown = "8h"
+  }
+}
+```
+
+Let's break this down:
+- `source = "../../../modules/s3-bucket"` - Relative path from `student-work/` up to project root, then into `modules/s3-bucket/`
+- `bucket_name` - Uses string interpolation to include your name
+- `environment` - Passes through from root variable
+- `enable_versioning` - Explicitly set (could omit since `true` is the default)
+- `tags` - Additional tags merged with module defaults
+
+> **Understanding the path:** From `week-01/lab-00/student-work/`, we go up three levels (`../../../`) to reach the project root, then down into `modules/s3-bucket/`.
+
+---
+
+### Step 6: Wire Up Root Outputs (`outputs.tf`)
+
+Update your root `student-work/outputs.tf` to expose the module outputs:
+
+```hcl
+# student-work/outputs.tf
+# Root outputs - expose module values
+
+output "bucket_id" {
+  description = "The name of the created bucket"
+  value       = module.lab_bucket.bucket_id
+}
+
+output "bucket_arn" {
+  description = "The ARN of the created bucket"
+  value       = module.lab_bucket.bucket_arn
+}
+
+output "bucket_region" {
+  description = "The region of the created bucket"
+  value       = module.lab_bucket.bucket_region
+}
+```
+
+Notice the syntax: `module.lab_bucket.bucket_id` - that's `module.<module_name>.<output_name>`.
+
+---
+
+### Step 7: Verify Your Module Works
+
+Let's test that everything is wired up correctly:
+
+```bash
+# Initialize Terraform (downloads providers, discovers modules)
+terraform init
+
+# Validate the configuration syntax
+terraform validate
+
+# See what Terraform would create
+terraform plan -var="student_name=yourname"
+```
+
+You should see Terraform planning to create:
+- 1 `aws_s3_bucket`
+- 1 `aws_s3_bucket_versioning`
+- 1 `aws_s3_bucket_server_side_encryption_configuration`
+
+**Congratulations!** You've built a reusable Terraform module. The same module can now be used multiple times - in this lab, in Lab 01, and beyond:
+
+```hcl
+# Example: Create multiple buckets with one module
+module "logs_bucket" {
+  source      = "../../../modules/s3-bucket"
+  bucket_name = "myapp-logs"
+  environment = "prod"
+}
+
+module "assets_bucket" {
+  source      = "../../../modules/s3-bucket"
+  bucket_name = "myapp-assets"
+  environment = "prod"
+}
+
+module "backups_bucket" {
+  source      = "../../../modules/s3-bucket"
+  bucket_name = "myapp-backups"
+  environment = "prod"
+}
+```
+
+Three buckets, all with consistent versioning, encryption, and tagging - from one shared module!
+
+> **Reusability in action:** In Lab 01, you'll use this same module (with some enhancements) to deploy a Hugo blog. No copying required - just reference `../../../modules/s3-bucket` from the Lab 01 student-work directory.
 
 ---
 
@@ -669,26 +1141,30 @@ run "module_outputs_are_valid" {
 
 ### Part 1: Create the Module Structure (40 points)
 
-Create a reusable S3 bucket module in `student-work/modules/s3-bucket/`:
+Create a reusable S3 bucket module in the **project root** at `terraform-course/modules/s3-bucket/`:
 
 ```
-student-work/
-├── main.tf                 # Uses your module
-├── outputs.tf              # Root outputs
-├── variables.tf            # Root variables
-├── providers.tf            # AWS provider config
+terraform-course/                    # Project root
 ├── modules/
-│   └── s3-bucket/
-│       ├── main.tf         # S3 resources
-│       ├── variables.tf    # Module inputs
-│       └── outputs.tf      # Module outputs
-└── tests/
-    └── s3_bucket.tftest.hcl
+│   └── s3-bucket/                   # YOUR MODULE - create this!
+│       ├── main.tf                  # S3 resources
+│       ├── variables.tf             # Module inputs
+│       └── outputs.tf               # Module outputs
+│
+└── week-01/
+    └── lab-00/
+        └── student-work/            # Your working directory
+            ├── main.tf              # Uses your module
+            ├── outputs.tf           # Root outputs
+            ├── variables.tf         # Root variables
+            ├── providers.tf         # AWS provider config
+            └── tests/
+                └── s3_bucket.tftest.hcl
 ```
 
 #### Module Requirements
 
-Your `modules/s3-bucket/` module must:
+Your `modules/s3-bucket/` module (at the project root) must:
 
 1. **Accept these input variables:**
    - `bucket_name` (string, required) - Base name for the bucket
@@ -715,11 +1191,11 @@ Your `modules/s3-bucket/` module must:
 
 ### Part 2: Use the Module (20 points)
 
-In your root `main.tf`, use your module to create a bucket:
+In your `student-work/main.tf`, use your module to create a bucket:
 
 ```hcl
 module "lab_bucket" {
-  source = "./modules/s3-bucket"
+  source = "../../../modules/s3-bucket"  # Path to project root modules
 
   bucket_name = "yourname-week01-lab00"
   environment = "dev"
@@ -730,6 +1206,8 @@ module "lab_bucket" {
   }
 }
 ```
+
+> **Path explanation:** From `week-01/lab-00/student-work/`, go up 3 directories (`../../../`) to reach the project root, then into `modules/s3-bucket/`.
 
 ### Part 3: Write Terraform Tests (40 points)
 

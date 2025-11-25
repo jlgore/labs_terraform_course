@@ -94,9 +94,11 @@ hugo  # Outputs to public/ directory
 
 ### Part 2: Extend Your S3 Module (20 points)
 
-Update your S3 module from Lab 00 to support static website hosting.
+Update the S3 module you created in Lab 00 (at the **project root**: `terraform-course/modules/s3-bucket/`) to support static website hosting.
 
-Add these new variables to `modules/s3-bucket/variables.tf`:
+> **No copying needed!** Since all modules live at the project root, you simply edit the same module. Lab 01's `student-work/main.tf` will reference `../../../modules/s3-bucket` - the exact same module Lab 00 uses.
+
+Add these new variables to `terraform-course/modules/s3-bucket/variables.tf`:
 
 ```hcl
 variable "enable_website" {
@@ -135,12 +137,36 @@ resource "aws_s3_bucket_website_configuration" "this" {
 }
 ```
 
-Add new outputs:
+Add new outputs to `terraform-course/modules/s3-bucket/outputs.tf`:
 
 ```hcl
 output "website_endpoint" {
   description = "Website endpoint (if enabled)"
   value       = var.enable_website ? aws_s3_bucket_website_configuration.this[0].website_endpoint : null
+}
+
+output "bucket_regional_domain_name" {
+  description = "Regional domain name of the bucket (for CloudFront)"
+  value       = aws_s3_bucket.this.bucket_regional_domain_name
+}
+```
+
+Now set up your `student-work/main.tf` to use the module with website hosting enabled:
+
+```hcl
+# week-01/lab-01/student-work/main.tf
+
+module "blog_bucket" {
+  source = "../../../modules/s3-bucket"  # Same module from Lab 00
+
+  bucket_name    = "${var.student_name}-blog"
+  environment    = var.environment
+  enable_website = true  # NEW: Enable static website hosting
+
+  tags = {
+    Student      = var.student_name
+    AutoTeardown = "8h"
+  }
 }
 ```
 
@@ -322,27 +348,31 @@ run "cloudfront_has_oac" {
 ## Expected Directory Structure
 
 ```
-student-work/
-├── main.tf              # Module usage + CloudFront
-├── cloudfront.tf        # CloudFront resources
-├── variables.tf         # Root variables
-├── outputs.tf           # Root outputs
-├── providers.tf         # AWS provider
+terraform-course/                        # Project root
 ├── modules/
-│   └── s3-bucket/       # Your module from Lab 00
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
-├── tests/
-│   ├── s3_bucket.tftest.hcl
-│   └── cloudfront.tftest.hcl
-└── blog/                # Hugo site
-    ├── hugo.toml
-    ├── content/
-    │   └── posts/
-    │       └── hello-terraform.md
-    ├── themes/
-    └── public/          # Generated static files
+│   └── s3-bucket/                       # Shared module (updated in Lab 00, extended here)
+│       ├── main.tf                      # Now includes website config
+│       ├── variables.tf                 # Now includes enable_website, etc.
+│       └── outputs.tf                   # Now includes website_endpoint
+│
+└── week-01/
+    └── lab-01/
+        └── student-work/                # Your working directory
+            ├── main.tf                  # Module usage (source = "../../../modules/s3-bucket")
+            ├── cloudfront.tf            # CloudFront resources
+            ├── variables.tf             # Root variables
+            ├── outputs.tf               # Root outputs
+            ├── providers.tf             # AWS provider
+            ├── tests/
+            │   ├── s3_bucket.tftest.hcl
+            │   └── cloudfront.tftest.hcl
+            └── blog/                    # Hugo site
+                ├── hugo.toml
+                ├── content/
+                │   └── posts/
+                │       └── hello-terraform.md
+                ├── themes/
+                └── public/              # Generated static files
 ```
 
 ## Cost Comparison Exercise

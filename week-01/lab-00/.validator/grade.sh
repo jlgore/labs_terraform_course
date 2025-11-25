@@ -105,14 +105,16 @@ else
     echo "  ❌ No hardcoded credentials: FAIL" >&2
 fi
 
-# Check 4: Module structure exists (5 points)
-if [ -d "modules/s3-bucket" ] && [ -f "modules/s3-bucket/main.tf" ] && [ -f "modules/s3-bucket/variables.tf" ] && [ -f "modules/s3-bucket/outputs.tf" ]; then
+# Check 4: Module structure exists at project root (5 points)
+# Module should be at terraform-course/modules/s3-bucket/ (../../../modules/s3-bucket from student-work)
+MODULE_PATH="../../../modules/s3-bucket"
+if [ -d "$MODULE_PATH" ] && [ -f "$MODULE_PATH/main.tf" ] && [ -f "$MODULE_PATH/variables.tf" ] && [ -f "$MODULE_PATH/outputs.tf" ]; then
     CODE_QUALITY=$((CODE_QUALITY + 5))
-    add_check "code_quality" "Module Structure" 5 5 "pass" "Module has proper structure"
+    add_check "code_quality" "Module Structure" 5 5 "pass" "Module has proper structure at project root"
     echo "  ✅ Module structure: PASS" >&2
 else
-    add_check "code_quality" "Module Structure" 0 5 "fail" "Module missing required files"
-    ERRORS+=("Module structure incomplete")
+    add_check "code_quality" "Module Structure" 0 5 "fail" "Module missing at project root ($MODULE_PATH)"
+    ERRORS+=("Module structure incomplete at project root")
     echo "  ❌ Module structure: FAIL" >&2
 fi
 
@@ -133,27 +135,28 @@ echo "" >&2
 echo "📋 Checking Functionality..." >&2
 
 # Check 1: Module is used in main.tf (5 points)
-if grep -q 'module.*".*"' main.tf 2>/dev/null && grep -q 'source.*=.*"./modules/s3-bucket"' main.tf 2>/dev/null; then
+# Module source should reference project root: ../../../modules/s3-bucket
+if grep -q 'module.*".*"' main.tf 2>/dev/null && grep -q 'source.*=.*"\.\./\.\./\.\./modules/s3-bucket"' main.tf 2>/dev/null; then
     FUNCTIONALITY=$((FUNCTIONALITY + 5))
-    add_check "functionality" "Module Usage" 5 5 "pass" "S3 module is used in main.tf"
+    add_check "functionality" "Module Usage" 5 5 "pass" "S3 module is used in main.tf with correct path"
     echo "  ✅ Module usage: PASS" >&2
 else
-    add_check "functionality" "Module Usage" 0 5 "fail" "Module not properly used in main.tf"
+    add_check "functionality" "Module Usage" 0 5 "fail" "Module not properly used in main.tf (should use source = \"../../../modules/s3-bucket\")"
     echo "  ❌ Module usage: FAIL" >&2
 fi
 
 # Check 2: Module has required variables (5 points)
 MODULE_VARS=0
-if grep -q 'variable.*"bucket_name"' modules/s3-bucket/variables.tf 2>/dev/null; then
+if grep -q 'variable.*"bucket_name"' "$MODULE_PATH/variables.tf" 2>/dev/null; then
     MODULE_VARS=$((MODULE_VARS + 1))
 fi
-if grep -q 'variable.*"environment"' modules/s3-bucket/variables.tf 2>/dev/null; then
+if grep -q 'variable.*"environment"' "$MODULE_PATH/variables.tf" 2>/dev/null; then
     MODULE_VARS=$((MODULE_VARS + 1))
 fi
-if grep -q 'variable.*"enable_versioning"' modules/s3-bucket/variables.tf 2>/dev/null; then
+if grep -q 'variable.*"enable_versioning"' "$MODULE_PATH/variables.tf" 2>/dev/null; then
     MODULE_VARS=$((MODULE_VARS + 1))
 fi
-if grep -q 'variable.*"tags"' modules/s3-bucket/variables.tf 2>/dev/null; then
+if grep -q 'variable.*"tags"' "$MODULE_PATH/variables.tf" 2>/dev/null; then
     MODULE_VARS=$((MODULE_VARS + 1))
 fi
 
@@ -172,13 +175,13 @@ fi
 
 # Check 3: Module has required outputs (5 points)
 MODULE_OUTPUTS=0
-if grep -q 'output.*"bucket_id"' modules/s3-bucket/outputs.tf 2>/dev/null; then
+if grep -q 'output.*"bucket_id"' "$MODULE_PATH/outputs.tf" 2>/dev/null; then
     MODULE_OUTPUTS=$((MODULE_OUTPUTS + 1))
 fi
-if grep -q 'output.*"bucket_arn"' modules/s3-bucket/outputs.tf 2>/dev/null; then
+if grep -q 'output.*"bucket_arn"' "$MODULE_PATH/outputs.tf" 2>/dev/null; then
     MODULE_OUTPUTS=$((MODULE_OUTPUTS + 1))
 fi
-if grep -q 'output.*"bucket_region"' modules/s3-bucket/outputs.tf 2>/dev/null; then
+if grep -q 'output.*"bucket_region"' "$MODULE_PATH/outputs.tf" 2>/dev/null; then
     MODULE_OUTPUTS=$((MODULE_OUTPUTS + 1))
 fi
 
@@ -328,8 +331,8 @@ else
 fi
 
 # Check 2: Variable descriptions (5 points)
-VAR_DESCRIPTIONS=$(grep -c 'description\s*=' modules/s3-bucket/variables.tf 2>/dev/null || echo 0)
-TOTAL_VARS=$(grep -c 'variable\s*"' modules/s3-bucket/variables.tf 2>/dev/null || echo 1)
+VAR_DESCRIPTIONS=$(grep -c 'description\s*=' "$MODULE_PATH/variables.tf" 2>/dev/null || echo 0)
+TOTAL_VARS=$(grep -c 'variable\s*"' "$MODULE_PATH/variables.tf" 2>/dev/null || echo 1)
 
 if [ "$VAR_DESCRIPTIONS" -ge "$TOTAL_VARS" ]; then
     DOCUMENTATION=$((DOCUMENTATION + 5))

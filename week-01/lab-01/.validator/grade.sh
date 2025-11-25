@@ -105,14 +105,15 @@ else
     echo "  ❌ No hardcoded credentials: FAIL" >&2
 fi
 
-# Check 4: Module structure exists (5 points)
-if [ -d "modules/s3-bucket" ] && [ -f "modules/s3-bucket/main.tf" ]; then
+# Check 4: Module structure exists at project root (5 points)
+# Module should be at terraform-course/modules/s3-bucket/ (../../../modules/s3-bucket from student-work)
+if [ -d "../../../modules/s3-bucket" ] && [ -f "../../../modules/s3-bucket/main.tf" ]; then
     CODE_QUALITY=$((CODE_QUALITY + 5))
-    add_check "code_quality" "Module Structure" 5 5 "pass" "S3 module exists"
+    add_check "code_quality" "Module Structure" 5 5 "pass" "S3 module exists at project root"
     echo "  ✅ Module structure: PASS" >&2
 else
-    add_check "code_quality" "Module Structure" 0 5 "fail" "S3 module not found"
-    ERRORS+=("Module structure missing")
+    add_check "code_quality" "Module Structure" 0 5 "fail" "S3 module not found at project root (../../../modules/s3-bucket)"
+    ERRORS+=("Module structure missing at project root")
     echo "  ❌ Module structure: FAIL" >&2
 fi
 
