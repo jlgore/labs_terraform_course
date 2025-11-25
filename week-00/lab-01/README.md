@@ -452,6 +452,15 @@ sed -i "s/database_name_here/wordpress/" wp-config.php
 sed -i "s/username_here/wpuser/" wp-config.php
 sed -i "s/password_here/WPpassword123!/" wp-config.php
 
+# Get public IP for WordPress URL configuration (using IMDSv2)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+
+# Set WordPress home and site URL to prevent login/cookie issues
+sed -i "/DB_COLLATE/a\\
+define('WP_HOME', 'http://$PUBLIC_IP');\\
+define('WP_SITEURL', 'http://$PUBLIC_IP');" wp-config.php
+
 # Generate and set unique authentication keys and salts
 # This fetches random keys from the WordPress API
 SALT=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
