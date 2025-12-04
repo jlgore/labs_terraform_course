@@ -20,7 +20,7 @@ set -e
 WORK_DIR="${1:-.}"
 PLAN_FILE="${2:-/tmp/plan.json}"
 INFRACOST_FILE="${3:-/tmp/infracost.json}"
-CHECKOV_FILE="${4:-/tmp/checkov.json}"
+POLICY_FILE="${4:-/tmp/policy-results.json}"  # conftest or checkov results
 
 # Initialize scores
 CODE_QUALITY=0
@@ -410,33 +410,40 @@ if [ -f "$PLAN_FILE" ]; then
     fi
 fi
 
-# Checkov scan (7 points)
-if [ -f "$CHECKOV_FILE" ]; then
-    FAILED_CHECKS=$(jq '.results.failed_checks | length // 0' "$CHECKOV_FILE" 2>/dev/null || echo "0")
-    PASSED_CHECKS=$(jq '.results.passed_checks | length // 0' "$CHECKOV_FILE" 2>/dev/null || echo "0")
+# Policy scan (7 points)
+if [ -f "$POLICY_FILE" ]; then
+    FAILED_CHECKS=$(jq '.results.failed_checks | length // 0' "$POLICY_FILE" 2>/dev/null || echo "0")
+    PASSED_CHECKS=$(jq '.results.passed_checks | length // 0' "$POLICY_FILE" 2>/dev/null || echo "0")
+    WARNING_CHECKS=$(jq '.results.warnings | length // 0' "$POLICY_FILE" 2>/dev/null || echo "0")
 
-    echo "  Checkov: $PASSED_CHECKS passed, $FAILED_CHECKS failed" >&2
+    echo "  Policy checks: $PASSED_CHECKS passed, $FAILED_CHECKS failed, $WARNING_CHECKS warnings" >&2
+
+    # Show failed checks for debugging
+    if [ "$FAILED_CHECKS" -gt 0 ]; then
+        echo "  Failed checks:" >&2
+        jq -r '.results.failed_checks[]? | "    - " + (.resource // .check_id // "unknown")' "$POLICY_FILE" 2>/dev/null >&2 || true
+    fi
 
     if [ "$FAILED_CHECKS" -eq 0 ]; then
         SECURITY=$((SECURITY + 7))
-        add_check "security" "Checkov Security Scan" 7 7 "pass" "No security issues found"
-        echo "  ✅ Security scan: PASS (7/7)" >&2
-    elif [ "$FAILED_CHECKS" -le 3 ]; then
+        add_check "security" "Policy Checks" 7 7 "pass" "All lab-specific policies passed"
+        echo "  ✅ Policy checks: PASS (7/7)" >&2
+    elif [ "$FAILED_CHECKS" -le 2 ]; then
         SECURITY=$((SECURITY + 5))
-        add_check "security" "Checkov Security Scan" 5 7 "partial" "$FAILED_CHECKS minor security issues"
-        echo "  ⚠️  Security scan: PARTIAL (5/7)" >&2
-    elif [ "$FAILED_CHECKS" -le 5 ]; then
+        add_check "security" "Policy Checks" 5 7 "partial" "$FAILED_CHECKS policy issues"
+        echo "  ⚠️  Policy checks: PARTIAL (5/7)" >&2
+    elif [ "$FAILED_CHECKS" -le 4 ]; then
         SECURITY=$((SECURITY + 3))
-        add_check "security" "Checkov Security Scan" 3 7 "partial" "$FAILED_CHECKS security issues"
-        echo "  ⚠️  Security scan: PARTIAL (3/7)" >&2
+        add_check "security" "Policy Checks" 3 7 "partial" "$FAILED_CHECKS policy issues"
+        echo "  ⚠️  Policy checks: PARTIAL (3/7)" >&2
     else
-        add_check "security" "Checkov Security Scan" 0 7 "fail" "$FAILED_CHECKS security issues found"
-        ERRORS+=("Multiple security issues detected")
-        echo "  ❌ Security scan: FAIL (0/7)" >&2
+        add_check "security" "Policy Checks" 0 7 "fail" "$FAILED_CHECKS policy issues found"
+        ERRORS+=("Multiple policy failures detected")
+        echo "  ❌ Policy checks: FAIL (0/7)" >&2
     fi
 else
-    add_check "security" "Checkov Security Scan" 0 7 "skip" "Security scan not available"
-    echo "  ⚠️  Checkov not available" >&2
+    add_check "security" "Policy Checks" 0 7 "skip" "Policy checks not available"
+    echo "  ⚠️  Policy results not available" >&2
 fi
 
 echo "" >&2

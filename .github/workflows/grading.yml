@@ -35,6 +35,13 @@ jobs:
       - name: Install grading tools
         run: |
           sudo apt-get update && sudo apt-get install -y jq
+
+          # Install conftest for lab-specific policy checks
+          CONFTEST_VERSION="0.46.0"
+          curl -sL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar xz
+          sudo mv conftest /usr/local/bin/
+
+          # Keep checkov as fallback for labs without custom policies
           pip3 install checkov
 
       - name: Determine lab directory
@@ -83,9 +90,13 @@ jobs:
           aws-region: us-east-1
 
       - name: Run lab-specific setup
-        continue-on-error: true
         run: |
           SETUP_SCRIPT="${{ steps.lab-info.outputs.validator_dir }}/setup.sh"
+
+          echo "📁 Current directory: $(pwd)"
+          echo "📁 Looking for setup script at: $SETUP_SCRIPT"
+          echo "📁 Validator dir contents:"
+          ls -la "${{ steps.lab-info.outputs.validator_dir }}" || echo "Directory not found"
 
           if [ -f "$SETUP_SCRIPT" ]; then
             echo "🔧 Running lab-specific setup..."
@@ -94,6 +105,18 @@ jobs:
           else
             echo "ℹ️  No lab-specific setup script found (optional)"
           fi
+
+          # Ensure SSH key exists for labs that need it (fallback)
+          if [ ! -f ~/.ssh/wordpress-lab.pub ]; then
+            echo "📝 Creating fallback SSH key pair for terraform..."
+            mkdir -p ~/.ssh
+            ssh-keygen -t rsa -b 4096 -f ~/.ssh/wordpress-lab -N "" -q
+            echo "✅ SSH key pair created as fallback"
+          fi
+
+          # Verify the setup worked
+          echo "📁 Checking ~/.ssh directory:"
+          ls -la ~/.ssh/ || echo "~/.ssh not found"
 
       - name: Initialize Terraform
         working-directory: ${{ steps.lab-info.outputs.work_dir }}
@@ -128,11 +151,31 @@ jobs:
         run: |
           infracost breakdown --path . --format json --out-file /tmp/infracost.json 2>/dev/null || echo '{"totalMonthlyCost": "0"}' > /tmp/infracost.json
 
-      - name: Run Checkov security scan
+      - name: Run policy checks (conftest/Rego)
         continue-on-error: true
-        working-directory: ${{ steps.lab-info.outputs.work_dir }}
         run: |
-          checkov -d . --framework terraform --output json --quiet > /tmp/checkov.json 2>/dev/null || echo '{"results": {"passed_checks": [], "failed_checks": []}}' > /tmp/checkov.json
+          POLICY_DIR="${{ steps.lab-info.outputs.validator_dir }}/policy"
+
+          if [ -d "$POLICY_DIR" ] && [ "$(ls -A $POLICY_DIR 2>/dev/null)" ]; then
+            echo "📋 Running lab-specific policy checks with conftest..."
+            conftest test /tmp/plan.json --policy "$POLICY_DIR" --output json > /tmp/conftest.json 2>&1 || true
+
+            # Convert conftest output to a format the grading script expects
+            # conftest output: array of results with failures/warnings/successes
+            cat /tmp/conftest.json | jq '{
+              results: {
+                passed_checks: [.[] | .successes[]? | {check_id: "POLICY", resource: .msg}],
+                failed_checks: [.[] | .failures[]? | {check_id: "POLICY", resource: .msg}],
+                warnings: [.[] | .warnings[]? | {check_id: "POLICY", resource: .msg}]
+              }
+            }' > /tmp/policy-results.json 2>/dev/null || echo '{"results": {"passed_checks": [], "failed_checks": [], "warnings": []}}' > /tmp/policy-results.json
+
+            echo "✅ Lab-specific policy checks complete"
+            cat /tmp/conftest.json
+          else
+            echo "ℹ️  No lab-specific policies found, running generic Checkov scan..."
+            checkov -d "${{ steps.lab-info.outputs.work_dir }}" --framework terraform --output json --quiet > /tmp/policy-results.json 2>/dev/null || echo '{"results": {"passed_checks": [], "failed_checks": []}}' > /tmp/policy-results.json
+          fi
 
       - name: Run grading script
         id: grade
@@ -145,7 +188,8 @@ jobs:
           echo "🎓 Running grading script..."
 
           # Run grading script and capture JSON output
-          GRADE_JSON=$("$GRADE_SCRIPT" "$WORK_DIR" /tmp/plan.json /tmp/infracost.json /tmp/checkov.json)
+          # Uses policy-results.json (from conftest or checkov fallback)
+          GRADE_JSON=$("$GRADE_SCRIPT" "$WORK_DIR" /tmp/plan.json /tmp/infracost.json /tmp/policy-results.json)
 
           # Save JSON for later steps
           echo "$GRADE_JSON" > /tmp/grading-results.json
@@ -331,7 +375,8 @@ jobs:
             /tmp/plan.json
             /tmp/plan.txt
             /tmp/infracost.json
-            /tmp/checkov.json
+            /tmp/conftest.json
+            /tmp/policy-results.json
             /tmp/grading-results.json
           retention-days: 30
 
